@@ -1,8 +1,31 @@
 import 'package:flutter/material.dart';
-
 import '../../domain/entities/animal.dart';
 
-/// Карточка животного. StatelessWidget: получает isLiked и onLikeTap.
+IconData _getCategoryIcon(AnimalCategory category) {
+  switch (category) {
+    case AnimalCategory.feline:
+      return Icons.pets;
+    case AnimalCategory.canine:
+      return Icons.pets;
+    case AnimalCategory.bear:
+      return Icons.forest;
+    case AnimalCategory.bird:
+      return Icons.flutter_dash;
+    case AnimalCategory.elephant:
+      return Icons.forest;
+    case AnimalCategory.giraffe:
+      return Icons.height;
+    case AnimalCategory.penguin:
+      return Icons.ac_unit;
+  }
+}
+
+Color _hexToColor(String hex) {
+  final cleanHex = hex.replaceAll('#', '');
+  final paddedHex = cleanHex.length == 6 ? 'FF$cleanHex' : cleanHex;
+  return Color(int.tryParse(paddedHex, radix: 16) ?? 0xFF9E9E9E);
+}
+
 class AnimalCard extends StatelessWidget {
   final Animal animal;
   final bool isLiked;
@@ -52,7 +75,7 @@ class AnimalCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(animal.categoryIcon,
+                    Icon(_getCategoryIcon(animal.category),
                         size: 14, color: Colors.grey[700]),
                     const SizedBox(width: 6),
                     Expanded(
@@ -60,8 +83,7 @@ class AnimalCard extends StatelessWidget {
                         animal.category.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style:
-                            TextStyle(fontSize: 12, color: Colors.grey[700]),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                       ),
                     ),
                   ],
@@ -74,7 +96,6 @@ class AnimalCard extends StatelessWidget {
     );
   }
 
-  /// Обложка — Stack из трёх слоёв.
   Widget _cover() {
     return SizedBox(
       width: 72,
@@ -82,12 +103,11 @@ class AnimalCard extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Слой 1: Container с цветом (внутрь опционально фото).
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
               child: Container(
-                color: animal.color,
+                color: _hexToColor(animal.color),
                 child: Image.asset(
                   animal.image,
                   fit: BoxFit.cover,
@@ -96,10 +116,9 @@ class AnimalCard extends StatelessWidget {
               ),
             ),
           ),
-          // Слой 2: первая буква названия по центру.
           Center(
             child: Text(
-              animal.name[0].toUpperCase(),
+              animal.name.isNotEmpty ? animal.name[0].toUpperCase() : '?',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 30,
@@ -107,7 +126,6 @@ class AnimalCard extends StatelessWidget {
               ),
             ),
           ),
-          // Слой 3: лайк в правом верхнем углу, нажимается через onLikeTap.
           Positioned(
             top: 2,
             right: 2,
@@ -135,4 +153,4 @@ class AnimalCard extends StatelessWidget {
       ),
     );
   }
-} 
+}

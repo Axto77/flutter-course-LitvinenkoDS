@@ -1,102 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../domain/entities/animal.dart';
 import '../widgets/animal_card.dart';
 
-/// Каталог животных.
-const List<Animal> animals = [
-  Animal(
-    id: 1,
-    name: 'Лев',
-    subtitle: 'Panthera leo · Африка',
-    category: AnimalCategory.feline,
-    description: 'Социальный хищник, живёт прайдами.',
-    categoryIcon: Icons.pets,
-    image: 'assets/images/lion.jpg',
-    color: Color(0xFFB8860B),
-  ),
-  Animal(
-    id: 2,
-    name: 'Тигр',
-    subtitle: 'Panthera tigris · Азия',
-    category: AnimalCategory.feline,
-    categoryIcon: Icons.pets,
-    image: 'assets/images/tiger.jpg',
-    color: Color(0xFFCC5500),
-  ),
-  Animal(
-    id: 3,
-    name: 'Африканский слон',
-    subtitle: 'Loxodonta africana · Африка',
-    category: AnimalCategory.elephant,
-    categoryIcon: Icons.forest,
-    image: 'assets/images/elephant.jpg',
-    color: Color(0xFF6A5ACD),
-  ),
-  Animal(
-    id: 4,
-    name: 'Жираф',
-    subtitle: 'Giraffa camelopardalis · Африка',
-    category: AnimalCategory.giraffe,
-    categoryIcon: Icons.height,
-    image: 'assets/images/giraffe.jpg',
-    color: Color(0xFFDAA520),
-  ),
-  Animal(
-    id: 5,
-    name: 'Большая панда',
-    subtitle: 'Ailuropoda melanoleuca · Китай',
-    category: AnimalCategory.bear,
-    categoryIcon: Icons.forest,
-    image: 'assets/images/panda.jpg',
-    color: Color(0xFF2F4F4F),
-  ),
-  Animal(
-    id: 6,
-    name: 'Серый волк',
-    subtitle: 'Canis lupus · Евразия',
-    category: AnimalCategory.canine,
-    categoryIcon: Icons.pets,
-    image: 'assets/images/wolf.jpg',
-    color: Color(0xFF4A4A4A),
-  ),
-  Animal(
-    id: 7,
-    name: 'Обыкновенная лисица',
-    subtitle: 'Vulpes vulpes · Евразия',
-    category: AnimalCategory.canine,
-    categoryIcon: Icons.pets,
-    image: 'assets/images/fox.jpg',
-    color: Color(0xFFC0392B),
-  ),
-  Animal(
-    id: 8,
-    name: 'Бурый медведь',
-    subtitle: 'Ursus arctos · Евразия',
-    category: AnimalCategory.bear,
-    categoryIcon: Icons.forest,
-    image: 'assets/images/bear.jpg',
-    color: Color(0xFF5D4037),
-  ),
-  Animal(
-    id: 9,
-    name: 'Белоголовый орлан',
-    subtitle: 'Haliaeetus leucocephalus · Сев. Америка',
-    category: AnimalCategory.bird,
-    categoryIcon: Icons.flutter_dash,
-    image: 'assets/images/eagle.jpg',
-    color: Color(0xFF2C3E50),
-  ),
-  Animal(
-    id: 10,
-    name: 'Императорский пингвин',
-    subtitle: 'Aptenodytes forsteri · Антарктида',
-    category: AnimalCategory.penguin,
-    categoryIcon: Icons.ac_unit,
-    image: 'assets/images/penguin.jpg',
-    color: Color(0xFF1B3A5C),
-  ),
-];
+const String baseUrl = 'https://6ad5c93448476c0785d9c1a2.mockapi.io';
 
 class CatalogScreen extends StatefulWidget {
   const CatalogScreen({super.key});
@@ -106,13 +15,103 @@ class CatalogScreen extends StatefulWidget {
 }
 
 class _CatalogScreenState extends State<CatalogScreen> {
-  /// id лайкнутых элементов.
-  final Set<int> _likedIds = <int>{};
-
-  /// Показывать только избранные.
+  final Set<String> _likedIds = <String>{};
   bool _onlyFavorites = false;
 
-  void _toggleLike(int id) {
+  List<Animal> _animals = [];
+  bool _isLoading = true;
+  String? _error;
+
+  bool _showForm = false;
+  final TextEditingController _titleController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAnimals();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAnimals() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/animals'));
+      if (response.statusCode != 200) {
+        throw Exception('Статус ${response.statusCode}');
+      }
+
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List;
+      final animals = decoded.map((e) => Animal.fromJson(e)).toList();
+
+      setState(() {
+        _animals = animals;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Ошибка загрузки: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _addAnimal() async {
+    final title = _titleController.text.trim();
+    if (title.isEmpty) return;
+
+    try {
+      final newAnimal = Animal(
+        id: '',
+        name: title,
+        subtitle: 'Добавлено пользователем',
+        category: AnimalCategory.canine,
+        description: '',
+        image: 'assets/images/placeholder.png',
+        color: '9E9E9E',
+      );
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/animals'),
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode(newAnimal.toJson()),
+      );
+
+      if (response.statusCode != 201) {
+        throw Exception('Статус ${response.statusCode}');
+      }
+
+      final created = Animal.fromJson(jsonDecode(utf8.decode(response.bodyBytes)));
+
+      setState(() {
+        _animals.insert(0, created);
+        _titleController.clear();
+        _showForm = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Успешно добавлено!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка отправки: $e')),
+        );
+      }
+    }
+  }
+
+  void _toggleLike(String id) {
     setState(() {
       if (_likedIds.contains(id)) {
         _likedIds.remove(id);
@@ -122,11 +121,69 @@ class _CatalogScreenState extends State<CatalogScreen> {
     });
   }
 
+  Widget _buildForm() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Название животного',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          ElevatedButton(
+            onPressed: _addAnimal,
+            child: const Text('Отправить'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final visible = _onlyFavorites
-        ? animals.where((a) => _likedIds.contains(a.id)).toList()
-        : animals;
+        ? _animals.where((a) => _likedIds.contains(a.id)).toList()
+        : _animals;
+
+    Widget body;
+    if (_isLoading) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (_error != null) {
+      body = Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _loadAnimals,
+              child: const Text('Обновить'),
+            ),
+          ],
+        ),
+      );
+    } else if (visible.isEmpty) {
+      body = const Center(child: Text('Ничего не нашлось'));
+    } else {
+      body = ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: visible.length,
+        itemBuilder: (_, i) {
+          final animal = visible[i];
+          return AnimalCard(
+            animal: animal,
+            isLiked: _likedIds.contains(animal.id),
+            onLikeTap: () => _toggleLike(animal.id),
+          );
+        },
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -137,16 +194,20 @@ class _CatalogScreenState extends State<CatalogScreen> {
             const Text('Каталог животных'),
             Text(
               'В избранном: ${_likedIds.length}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.normal,
-              ),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: Icon(_showForm ? Icons.close : Icons.add),
+            onPressed: () => setState(() => _showForm = !_showForm),
+          ),
+        ],
       ),
       body: Column(
         children: [
+          if (_showForm) _buildForm(),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: Align(
@@ -158,32 +219,15 @@ class _CatalogScreenState extends State<CatalogScreen> {
                   setState(() => _onlyFavorites = value);
                 },
                 avatar: Icon(
-                  _onlyFavorites
-                      ? Icons.favorite
-                      : Icons.favorite_border,
-                      color:Colors.red,
+                  _onlyFavorites ? Icons.favorite : Icons.favorite_border,
+                  color: Colors.red,
                   size: 16,
                 ),
                 label: const Text('Только избранные'),
               ),
             ),
           ),
-          Expanded(
-            child: visible.isEmpty
-                ? const Center(child: Text('Ничего не нашлось'))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: visible.length,
-                    itemBuilder: (_, i) {
-                      final animal = visible[i];
-                      return AnimalCard(
-                        animal: animal,
-                        isLiked: _likedIds.contains(animal.id),
-                        onLikeTap: () => _toggleLike(animal.id),
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: body),
         ],
       ),
     );
