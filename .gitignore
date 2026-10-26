@@ -46,3 +46,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# кэш Hosting
+.firebase/
+
+# логи CLI
+firebase-debug.log
+
+# ключи сервисного аккаунта
+*-firebase-adminsdk-*.json
