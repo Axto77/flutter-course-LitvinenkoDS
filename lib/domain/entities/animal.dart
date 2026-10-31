@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum AnimalCategory {
   feline('Кошачьи'),
   canine('Псовые'),
@@ -30,7 +32,6 @@ class Animal {
     required this.color,
   });
 
-
   factory Animal.fromJson(Map<String, dynamic> json) {
     return Animal(
       id: json['id']?.toString() ?? '',
@@ -40,6 +41,19 @@ class Animal {
       description: json['description'] as String? ?? '',
       image: json['image'] as String? ?? 'assets/images/placeholder.png',
       color: json['color'] as String? ?? '9E9E9E',
+    );
+  }
+
+  factory Animal.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data()!;
+    return Animal(
+      id: doc.id, // Берем ID из самого документа, а не из полей
+      name: data['name'] as String? ?? 'Без названия',
+      subtitle: data['subtitle'] as String? ?? '',
+      category: AnimalCategory.values.byName(data['category'] as String? ?? 'feline'),
+      description: data['description'] as String? ?? '',
+      image: data['image'] as String? ?? 'assets/images/placeholder.png',
+      color: data['color'] as String? ?? '9E9E9E',
     );
   }
 
