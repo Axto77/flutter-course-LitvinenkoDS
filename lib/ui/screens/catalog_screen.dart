@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../domain/entities/animal.dart';
-import '../widgets/animal_card.dart';
 import '../../bloc/animals_bloc.dart';
 import '../../bloc/animals_event.dart';
 import '../../bloc/animals_state.dart';
+import '../../data/auth_repository.dart';
+import '../../domain/entities/animal.dart';
+import '../widgets/add_animal_sheet.dart';
+import '../widgets/animal_card.dart';
+import '../widgets/theme_toggle_button.dart';
+import 'animal_details_screen.dart';
 
 class CatalogScreen extends StatefulWidget {
   const CatalogScreen({super.key});
@@ -17,223 +19,279 @@ class CatalogScreen extends StatefulWidget {
 }
 
 class _CatalogScreenState extends State<CatalogScreen> {
-  bool _onlyFavorites = false;
-  bool _showForm = false;
-  final TextEditingController _titleController = TextEditingController();
+  final AuthRepository _authRepository = AuthRepository();
 
-  final Stream<Set<String>> _favoritesStream = FirebaseFirestore.instance
-      .collection('users')
-      .doc(FirebaseAuth.instance.currentUser!.uid)
-      .collection('favorites')
-      .snapshots()
-      .map((snapshot) => snapshot.docs.map((doc) => doc.id).toSet());
+  Future<void> _signOut() async {
+    try {
+      await _authRepository.signOut();
+    } catch (_) {
+      if (!mounted) return;
 
-  @override
-  void dispose() {
-    _titleController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _addAnimal() async {
-    final title = _titleController.text.trim();
-
-    if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Пожалуйста, введите название животного')),
+        const SnackBar(
+          content: Text('Не удалось выйти. Попробуйте ещё раз.'),
+        ),
       );
-      return;
-    }
-
-    try {
-      final newAnimalMap = {
-        'name': title,
-        'subtitle': 'Добавлено пользователем',
-        'category': AnimalCategory.canine.name,
-        'description': '',
-        'image': 'assets/images/placeholder.png',
-        'color': '9E9E9E',
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      await FirebaseFirestore.instance.collection('animals').add(newAnimalMap);
-
-      setState(() {
-        _titleController.clear();
-        _showForm = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Успешно добавлено!')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка отправки: $e')),
-        );
-      }
     }
   }
 
-  Future<void> _toggleLike(String id, bool isLiked) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final favRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('favorites')
-        .doc(id);
+  Future<void> _openAddSheet() async {
+    final animal = await showModalBottomSheet<Animal>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => const AddAnimalSheet(),
+    );
 
-    try {
-      if (isLiked) {
-        await favRef.delete();
-      } else {
-        await favRef.set({'liked': true});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка обновления лайка: $e')),
-        );
-      }
-    }
+    if (!mounted || animal == null) return;
+
+    context.read<AnimalsBloc>().add(AnimalAdded(animal));
   }
 
-  Widget _buildForm() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Название животного',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          ElevatedButton(
-            onPressed: _addAnimal,
-            child: const Text('Отправить'),
-          ),
-        ],
+  void _openDetails(Animal animal) {
+    final animalsBloc = context.read<AnimalsBloc>();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: animalsBloc,
+          child: AnimalDetailsScreen(animal: animal),
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<Set<String>>(
-      stream: _favoritesStream,
-      builder: (context, favSnapshot) {
-        final likedIds = favSnapshot.data ?? <String>{};
+    return BlocListener<AnimalsBloc, AnimalsState>(
+      listenWhen: (previous, current) =>
+          current is AnimalsLoadFailure &&
+          previous is! AnimalsLoadFailure,
+      listener: (context, state) {
+        if (state is! AnimalsLoadFailure) return;
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Каталог животных'),
-                Text(
-                  'В избранном: ${likedIds.length}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: () => FirebaseAuth.instance.signOut(),
-                tooltip: 'Выйти',
-              ),
-              IconButton(
-                icon: Icon(_showForm ? Icons.close : Icons.add),
-                onPressed: () => setState(() => _showForm = !_showForm),
-              ),
-            ],
-          ),
-          body: Column(
-            children: [
-              if (_showForm) _buildForm(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilterChip(
-                    selected: _onlyFavorites,
-                    showCheckmark: false,
-                    onSelected: (value) {
-                      setState(() => _onlyFavorites = value);
-                    },
-                    avatar: Icon(
-                      _onlyFavorites ? Icons.favorite : Icons.favorite_border,
-                      color: Colors.red,
-                      size: 16,
-                    ),
-                    label: const Text('Только избранные'),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: BlocBuilder<AnimalsBloc, AnimalsState>(
-                  builder: (context, state) {
-                    if (state is AnimalsLoadInProgress) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (state is AnimalsLoadFailure) {
-                      return Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(state.message),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: () => context
-                                  .read<AnimalsBloc>()
-                                  .add(AnimalsLoadRequested()),
-                              child: const Text('Обновить'),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    final s = state as AnimalsLoadSuccess;
-                    final animals = s.animals;
-
-                    final visible = _onlyFavorites
-                        ? animals.where((a) => likedIds.contains(a.id)).toList()
-                        : animals;
-
-                    if (visible.isEmpty) {
-                      return Center(
-                        child: Text(_onlyFavorites ? 'Нет избранных' : 'Ничего не нашлось'),
-                      );
-                    }
-
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: visible.length,
-                      itemBuilder: (_, i) {
-                        final animal = visible[i];
-                        final isLiked = likedIds.contains(animal.id);
-                        return AnimalCard(
-                          animal: animal,
-                          isLiked: isLiked,
-                          onLikeTap: () => _toggleLike(animal.id, isLiked),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(state.message)),
         );
       },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Каталог животных'),
+          actions: [
+            const ThemeToggleButton(),
+            IconButton(
+              tooltip: 'Выйти',
+              onPressed: _signOut,
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+        ),
+        body: BlocBuilder<AnimalsBloc, AnimalsState>(
+          builder: (context, state) {
+            if (state is AnimalsLoadInProgress) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (state is AnimalsLoadFailure) {
+              return _ErrorView(message: state.message);
+            }
+
+            final success = state as AnimalsLoadSuccess;
+            final visibleAnimals = success.visibleAnimals;
+            final theme = Theme.of(context);
+
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FilterChip(
+                            selected: success.onlyFavorites,
+                            avatar: Icon(
+                              success.onlyFavorites
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              size: 16,
+                              color: Colors.red,
+                            ),
+                            label: const Text('Только избранные'),
+                            onSelected: (_) {
+                              context
+                                  .read<AnimalsBloc>()
+                                  .add(AnimalsFilterToggled());
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Всего: ${success.animals.length}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: visibleAnimals.isEmpty
+                      ? _EmptyView(
+                          onlyFavorites: success.onlyFavorites,
+                          onAdd: _openAddSheet,
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
+                          itemCount: visibleAnimals.length,
+                          itemBuilder: (context, index) {
+                            final animal = visibleAnimals[index];
+
+                            return AnimalCard(
+                              animal: animal,
+                              isLiked: success.likedIds.contains(animal.id),
+                              onLikeTap: () {
+                                context
+                                    .read<AnimalsBloc>()
+                                    .add(AnimalLikeToggled(animal.id));
+                              },
+                              onTap: () => _openDetails(animal),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+        floatingActionButton: BlocBuilder<AnimalsBloc, AnimalsState>(
+          builder: (context, state) {
+            if (state is! AnimalsLoadSuccess) {
+              return const SizedBox.shrink();
+            }
+
+            return FloatingActionButton.extended(
+              onPressed: _openAddSheet,
+              icon: const Icon(Icons.add),
+              label: const Text('Добавить'),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+
+  const _ErrorView({
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off,
+              size: 64,
+              color: colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Ошибка загрузки',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () {
+                context.read<AnimalsBloc>().add(AnimalsLoadRequested());
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Обновить'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyView extends StatelessWidget {
+  final bool onlyFavorites;
+  final VoidCallback onAdd;
+
+  const _EmptyView({
+    required this.onlyFavorites,
+    required this.onAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              onlyFavorites ? Icons.favorite_border : Icons.pets,
+              size: 64,
+              color: colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              onlyFavorites ? 'В избранном пока пусто' : 'Каталог пуст',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              onlyFavorites
+                  ? 'Нажмите на сердечко у животного, чтобы добавить его в избранное.'
+                  : 'Добавьте первое животное — оно сразу появится в каталоге.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (!onlyFavorites) ...[
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add),
+                label: const Text('Добавить животное'),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

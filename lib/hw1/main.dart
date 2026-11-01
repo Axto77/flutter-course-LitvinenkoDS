@@ -140,9 +140,9 @@ Widget task4() {
       size: 100,
     ),
     onPressed: () {
-      print('Вы добавили в избранное');
+      debugPrint('Вы добавили в избранное');
     },
-  );;
+  );
 }
 
 // 5. Кнопка «Подробнее» — кнопка с текстом и обводкой, при нажатии пишет в консоль "Узнать детали"
@@ -150,7 +150,7 @@ Widget task5() {
   // TODO: замените Placeholder на ...
   return OutlinedButton(
     onPressed: () {
-      print('Узнать детали');
+      debugPrint('Узнать детали');
     },
     child: Text('Подробнее'),
   );
@@ -174,5 +174,5 @@ Widget task6() {
       height: 150,
       fit: BoxFit.cover,
     ),
-  );;
+  );
 }

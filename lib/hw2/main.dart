@@ -208,7 +208,7 @@ Widget cover(Animal animal) {
               child: Image.asset(
                 animal.image,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
           ),
