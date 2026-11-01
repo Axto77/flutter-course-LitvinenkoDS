@@ -21,6 +21,7 @@ class Animal {
   final String description;
   final String image;
   final String color;
+  final DateTime? createdAt;
 
   const Animal({
     required this.id,
@@ -30,34 +31,53 @@ class Animal {
     required this.description,
     required this.image,
     required this.color,
+    this.createdAt,
   });
 
   factory Animal.fromJson(Map<String, dynamic> json) {
     return Animal(
       id: json['id']?.toString() ?? '',
-      name: json['name'] as String? ?? 'Без названия',
-      subtitle: json['subtitle'] as String? ?? '',
-      category: AnimalCategory.values.byName(json['category'] as String? ?? 'feline'),
-      description: json['description'] as String? ?? '',
-      image: json['image'] as String? ?? 'assets/images/placeholder.png',
-      color: json['color'] as String? ?? '9E9E9E',
+      name: json['name']?.toString() ?? 'Без названия',
+      subtitle: json['subtitle']?.toString() ?? '',
+      category: _parseCategory(json['category']),
+      description: json['description']?.toString() ?? '',
+      image: json['image']?.toString() ?? 'assets/images/placeholder.png',
+      color: json['color']?.toString() ?? '9E9E9E',
+      createdAt: _parseDateTime(json['createdAt']),
     );
   }
 
-  factory Animal.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
+  factory Animal.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? const <String, dynamic>{};
+
     return Animal(
-      id: doc.id, // Берем ID из самого документа, а не из полей
-      name: data['name'] as String? ?? 'Без названия',
-      subtitle: data['subtitle'] as String? ?? '',
-      category: AnimalCategory.values.byName(data['category'] as String? ?? 'feline'),
-      description: data['description'] as String? ?? '',
-      image: data['image'] as String? ?? 'assets/images/placeholder.png',
-      color: data['color'] as String? ?? '9E9E9E',
+      id: doc.id,
+      name: data['name']?.toString() ?? 'Без названия',
+      subtitle: data['subtitle']?.toString() ?? '',
+      category: _parseCategory(data['category']),
+      description: data['description']?.toString() ?? '',
+      image: data['image']?.toString() ?? 'assets/images/placeholder.png',
+      color: data['color']?.toString() ?? '9E9E9E',
+      createdAt: _parseDateTime(data['createdAt']),
     );
   }
 
   Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'subtitle': subtitle,
+      'category': category.name,
+      'description': description,
+      'image': image,
+      'color': color,
+      'createdAt': createdAt?.toIso8601String(),
+    };
+  }
+
+  Map<String, dynamic> toFirestore() {
     return {
       'name': name,
       'subtitle': subtitle,
@@ -66,5 +86,22 @@ class Animal {
       'image': image,
       'color': color,
     };
+  }
+
+  static AnimalCategory _parseCategory(Object? value) {
+    if (value is AnimalCategory) return value;
+
+    final raw = value?.toString();
+    for (final category in AnimalCategory.values) {
+      if (category.name == raw) return category;
+    }
+    return AnimalCategory.feline;
+  }
+
+  static DateTime? _parseDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 }
