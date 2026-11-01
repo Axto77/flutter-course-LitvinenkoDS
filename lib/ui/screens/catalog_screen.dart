@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/animal.dart';
 import '../widgets/animal_card.dart';
+import '../../bloc/animals_bloc.dart';
+import '../../bloc/animals_event.dart';
+import '../../bloc/animals_state.dart';
 
 class CatalogScreen extends StatefulWidget {
   const CatalogScreen({super.key});
@@ -17,15 +21,6 @@ class _CatalogScreenState extends State<CatalogScreen> {
   bool _showForm = false;
   final TextEditingController _titleController = TextEditingController();
 
-  // Поток для получения всех животных
-  final Stream<QuerySnapshot<Map<String, dynamic>>> _animalsStream =
-      FirebaseFirestore.instance
-          .collection('animals')
-          .orderBy('createdAt', descending: true)
-          .snapshots();
-
-  // Поток для получения избранного (лайков) текущего пользователя
-  // Мы сразу преобразуем его в Set<String> для удобства
   final Stream<Set<String>> _favoritesStream = FirebaseFirestore.instance
       .collection('users')
       .doc(FirebaseAuth.instance.currentUser!.uid)
@@ -41,8 +36,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
   Future<void> _addAnimal() async {
     final title = _titleController.text.trim();
-    
-    // Рекомендация преподавателя
+
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Пожалуйста, введите название животного')),
@@ -82,7 +76,6 @@ class _CatalogScreenState extends State<CatalogScreen> {
     }
   }
 
-  // Обновленный метод лайка: теперь он пишет в Firebase
   Future<void> _toggleLike(String id, bool isLiked) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final favRef = FirebaseFirestore.instance
@@ -93,9 +86,9 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
     try {
       if (isLiked) {
-        await favRef.delete(); // Убираем лайк
+        await favRef.delete();
       } else {
-        await favRef.set({'liked': true}); // Ставим лайк
+        await favRef.set({'liked': true});
       }
     } catch (e) {
       if (mounted) {
@@ -132,11 +125,9 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Внешний StreamBuilder слушает лайки (избранное)
     return StreamBuilder<Set<String>>(
       stream: _favoritesStream,
       builder: (context, favSnapshot) {
-        // Если данные о лайках еще грузятся, используем пустое множество
         final likedIds = favSnapshot.data ?? <String>{};
 
         return Scaffold(
@@ -147,7 +138,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
               children: [
                 const Text('Каталог животных'),
                 Text(
-                  'В избранном: ${likedIds.length}', // Счетчик теперь берет данные из Firebase
+                  'В избранном: ${likedIds.length}',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
                 ),
               ],
@@ -187,27 +178,40 @@ class _CatalogScreenState extends State<CatalogScreen> {
                 ),
               ),
               Expanded(
-                // Внутренний StreamBuilder слушает животных
-                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: _animalsStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Ошибка: ${snapshot.error}'));
-                    }
-                    if (!snapshot.hasData) {
+                child: BlocBuilder<AnimalsBloc, AnimalsState>(
+                  builder: (context, state) {
+                    if (state is AnimalsLoadInProgress) {
                       return const Center(child: CircularProgressIndicator());
                     }
+                    if (state is AnimalsLoadFailure) {
+                      return Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(state.message),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () => context
+                                  .read<AnimalsBloc>()
+                                  .add(AnimalsLoadRequested()),
+                              child: const Text('Обновить'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
 
-                    final docs = snapshot.data!.docs;
-                    final animals = docs.map((doc) => Animal.fromFirestore(doc)).toList();
+                    final s = state as AnimalsLoadSuccess;
+                    final animals = s.animals;
 
-                    // Фильтруем на основе локального флага и данных из Firebase
                     final visible = _onlyFavorites
                         ? animals.where((a) => likedIds.contains(a.id)).toList()
                         : animals;
 
                     if (visible.isEmpty) {
-                      return const Center(child: Text('Ничего не нашлось'));
+                      return Center(
+                        child: Text(_onlyFavorites ? 'Нет избранных' : 'Ничего не нашлось'),
+                      );
                     }
 
                     return ListView.builder(
